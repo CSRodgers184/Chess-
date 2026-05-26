@@ -1,0 +1,239 @@
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess Teaching Board</title>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        background: #f0f0f0;
+        padding: 20px;
+    }
+    #myBoard {
+        margin: 20px auto;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        position: relative;
+    }
+    .controls {
+        margin: 15px 0;
+    }
+    button {
+        padding: 10px 18px;
+        margin: 5px;
+        font-size: 16px;
+        cursor: pointer;
+    }
+    #moves {
+        max-height: 300px;
+        overflow-y: auto;
+        width: 300px;
+        margin: 20px auto;
+        text-align: left;
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        font-family: monospace;
+    }
+    #status {
+        font-size: 24px;
+        font-weight: bold;
+        margin: 10px;
+        min-height: 35px;
+    }
+   
+    .highlight-selected {
+        box-shadow: inset 0 0 0 5px #2196F3 !important;
+    }
+</style>
+
+<h1>Chess Teaching Board</h1>
+
+<div id="myBoard" style="width: 560px">
+    <div id="board" style="width: 560px"></div>
+</div>
+
+<div id="status"></div>
+
+<div class="controls">
+    <button onclick="startPosition()">New Game</button>
+    <button onclick="clearBoard()">Clear Board</button>
+    <button onclick="undoMove()">Undo</button>
+    <button onclick="toggleFlip()">Flip Board</button>
+</div>
+
+<h2>Move History</h2>
+<div id="moves"></div>
+
+<script>
+    let board;
+    let game = new Chess();
+    let moveHistory = [];
+    let selectedSquare = null;
+
+    $(function() {
+        const config = {
+            draggable: true,           // Drag enabled
+            dropOffBoard: 'trash',
+            sparePieces: true,
+            pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+            onDrop: handleDrop,
+            onSnapEnd: onSnapEnd
+        };
+
+        board = Chessboard('board', config);
+        board.start();
+        updateStatus();
+
+        attachClickHandler();
+    });
+
+    function attachClickHandler() {
+        $('#board').off('click').on('click', function(e) {
+            const squareEl = $(e.target).closest('.square-55d63');
+            if (squareEl.length === 0) return;
+
+            const square = squareEl.data('square');
+            if (square) {
+                handleSquareClick(square);
+            }
+        });
+    }
+
+    function handleSquareClick(square) {
+        const piece = game.get(square);
+
+        if (selectedSquare) {
+            if (selectedSquare === square) {
+                deselectSquare();
+            } else {
+                const move = game.move({
+                    from: selectedSquare,
+                    to: square,
+                    promotion: 'q'
+                });
+
+                if (move) {
+                    moveHistory.push(move.san);
+                    board.position(game.fen());
+                    updateMoveHistory();
+                    updateStatus();
+                    deselectSquare();
+                } else {
+                    if (piece && piece.color === game.turn()) {
+                        selectSquare(square);
+                    } else {
+                        deselectSquare();
+                    }
+                }
+            }
+        } 
+        else if (piece && piece.color === game.turn()) {
+            selectSquare(square);
+        }
+    }
+
+    function selectSquare(square) {
+        deselectSquare();
+        selectedSquare = square;
+        $(`.square-55d63[data-square="${square}"]`).addClass('highlight-selected');
+    }
+
+    function deselectSquare() {
+        if (selectedSquare) {
+            $(`.square-55d63[data-square="${selectedSquare}"]`).removeClass('highlight-selected');
+            selectedSquare = null;
+        }
+    }
+
+    // ====================== DRAG & DROP ======================
+    function handleDrop(source, target, piece) {
+        if (source === 'spare') {
+            let currentPos = board.position();
+            currentPos[target] = piece;
+            board.position(currentPos, false);
+            setTimeout(() => {
+                board.position(currentPos);
+                game.load(board.position('fen'));
+                updateStatus();
+            }, 10);
+            return;
+        }
+
+        const move = game.move({ from: source, to: target, promotion: 'q' });
+        if (move === null) return 'snapback';
+
+        moveHistory.push(move.san);
+        updateMoveHistory();
+        updateStatus();
+        deselectSquare();
+    }
+
+    function onSnapEnd() {
+        board.position(game.fen());
+    }
+
+    // ====================== UTILITY ======================
+    function updateMoveHistory() {
+        let html = '';
+        for (let i = 0; i < moveHistory.length; i += 2) {
+            html += `<strong>${Math.floor(i/2) + 1}.</strong> ${moveHistory[i]} `;
+            if (moveHistory[i+1]) html += `${moveHistory[i+1]} `;
+            html += '<br>';
+        }
+        document.getElementById('moves').innerHTML = html;
+    }
+
+    function updateStatus() {
+        let statusText = game.turn() === 'w' ? "White's turn" : "Black's turn";
+        let color = 'black';
+        if (game.in_checkmate()) {
+            statusText = game.turn() === 'w' ? "🎉 Black wins by Checkmate!" : "🎉 White wins by Checkmate!";
+            color = 'red';
+        } else if (game.in_check()) {
+            statusText = "⚠️ Check!";
+            color = 'orange';
+        }
+        const statusEl = document.getElementById('status');
+        statusEl.innerHTML = statusText;
+        statusEl.style.color = color;
+    }
+
+    function startPosition() {
+        game.reset();
+        board.start();
+        moveHistory = [];
+        document.getElementById('moves').innerHTML = '';
+        deselectSquare();
+        updateStatus();
+    }
+
+    function clearBoard() {
+        game.clear();
+        board.clear();
+        moveHistory = [];
+        document.getElementById('moves').innerHTML = '';
+        document.getElementById('status').innerHTML = 'Board Cleared';
+        document.getElementById('status').style.color = 'black';
+        deselectSquare();
+    }
+
+    function undoMove() {
+        if (game.undo()) {
+            moveHistory.pop();
+            if (moveHistory.length % 2 === 1) moveHistory.pop();
+            updateMoveHistory();
+            board.position(game.fen());
+            updateStatus();
+            deselectSquare();
+        }
+    }
+
+    function toggleFlip() {
+        board.flip();
+    }
+</script>
