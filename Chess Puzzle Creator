@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Puzzle Creator</title>
+    
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; text-align: center; }
+        #myBoard { margin: 20px auto; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+        .controls, .palette { margin: 15px 0; }
+        button { padding: 10px 15px; margin: 5px; font-size: 16px; cursor: pointer; }
+        .palette button { width: 50px; height: 50px; font-size: 30px; }
+        #status { font-size: 22px; font-weight: bold; margin: 10px; }
+        textarea { width: 500px; height: 80px; margin: 10px; }
+        .saved-puzzles { max-height: 300px; overflow-y: auto; margin: 20px auto; width: 600px; text-align: left; }
+    </style>
+</head>
+<body>
+    <h1>Chess Puzzle Creator</h1>
+    
+    <div id="myBoard" style="width: 560px">
+        <div id="board" style="width: 560px"></div>
+    </div>
+
+    <div id="status">Free Placement Mode</div>
+
+    <!-- Piece Palette -->
+    <div class="palette">
+        <h3>Click to Place Pieces</h3>
+        <button onclick="setPieceType('wP')">♙</button>
+        <button onclick="setPieceType('wR')">♖</button>
+        <button onclick="setPieceType('wN')">♘</button>
+        <button onclick="setPieceType('wB')">♗</button>
+        <button onclick="setPieceType('wQ')">♕</button>
+        <button onclick="setPieceType('wK')">♔</button>
+        <br>
+        <button onclick="setPieceType('bP')">♟</button>
+        <button onclick="setPieceType('bR')">♜</button>
+        <button onclick="setPieceType('bN')">♞</button>
+        <button onclick="setPieceType('bB')">♝</button>
+        <button onclick="setPieceType('bQ')">♛</button>
+        <button onclick="setPieceType('bK')">♚</button>
+        <button onclick="setPieceType(null)" style="background:#ddd;">Erase</button>
+    </div>
+
+    <div class="controls">
+        <button onclick="clearBoard()">Clear Board</button>
+        <button onclick="startPosition()">Starting Position</button>
+        <button onclick="toggleFlip()">Flip Board</button>
+        <button onclick="exportFEN()">Export FEN</button>
+        <button onclick="loadFEN()">Load FEN</button>
+        <button onclick="savePuzzle()">Save Puzzle</button>
+    </div>
+
+    <div>
+        <strong>Turn:</strong>
+        <button onclick="setTurn('w')">White</button>
+        <button onclick="setTurn('b')">Black</button>
+    </div>
+
+    <h2>Puzzle Info</h2>
+    <input type="text" id="puzzleTitle" placeholder="Puzzle Title" style="width:400px"><br><br>
+    <textarea id="puzzleGoal" placeholder="Goal (e.g., Mate in 3, Best move, etc.)"></textarea><br>
+    <textarea id="solution" placeholder="Solution moves (e.g., Nf3 Qe7 Bg5)"></textarea>
+
+    <h2>Saved Puzzles</h2>
+    <div id="savedPuzzles" class="saved-puzzles"></div>
+
+    <script>
+        let board, game = new Chess();
+        let currentPieceType = null; // For click-to-place
+        let freeMode = true;
+
+        $(function() {
+            board = Chessboard('board', {
+                draggable: true,
+                dropOffBoard: 'trash',
+                sparePieces: true,
+                pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+                onDrop: handleDrop,
+                onClick: handleSquareClick
+            });
+            board.start();
+            updateStatus();
+            loadSavedPuzzles();
+        });
+
+        function handleDrop(source, target, piece) {
+            if (source === 'spare') {
+                let pos = board.position() || {};
+                pos[target] = piece;
+                board.position(pos);
+                game.load(board.position('fen'));
+            } else {
+                let pos = board.position() || {};
+                pos[target] = pos[source];
+                delete pos[source];
+                board.position(pos);
+                game.load(board.position('fen'));
+            }
+            updateStatus();
+        }
+
+        function handleSquareClick(square) {
+            if (!currentPieceType) return;
+            
+            let pos = board.position() || {};
+            if (currentPieceType === 'erase') {
+                delete pos[square];
+            } else {
+                pos[square] = currentPieceType;
+            }
+            board.position(pos);
+            game.load(board.position('fen'));
+        }
+
+        function setPieceType(type) {
+            currentPieceType = type;
+            document.getElementById('status').innerHTML = type ? 
+                `Placing: ${type}` : 'Erase Mode';
+        }
+
+        function setTurn(color) {
+            game.turn(color);
+            updateStatus();
+        }
+
+        function updateStatus() {
+            document.getElementById('status').innerHTML = 
+                `Free Mode • Turn: ${game.turn() === 'w' ? 'White' : 'Black'}`;
+        }
+
+        function clearBoard() {
+            board.clear();
+            game.clear();
+            updateStatus();
+        }
+
+        function startPosition() {
+            game.reset();
+            board.start();
+            updateStatus();
+        }
+
+        function toggleFlip() {
+            board.flip();
+        }
+
+        function exportFEN() {
+            const fen = game.fen();
+            prompt("Copy this FEN:", fen);
+        }
+
+        function loadFEN() {
+            const fen = prompt("Paste FEN here:");
+            if (fen) {
+                try {
+                    game.load(fen);
+                    board.position(fen);
+                    updateStatus();
+                } catch(e) {
+                    alert("Invalid FEN!");
+                }
+            }
+        }
+
+        function savePuzzle() {
+            const title = document.getElementById('puzzleTitle').value || "Untitled Puzzle";
+            const goal = document.getElementById('puzzleGoal').value;
+            const solution = document.getElementById('solution').value;
+            const fen = game.fen();
+
+            let puzzles = JSON.parse(localStorage.getItem('chessPuzzles') || '[]');
+            puzzles.push({ title, goal, solution, fen, date: new Date().toLocaleDateString() });
+            localStorage.setItem('chessPuzzles', JSON.stringify(puzzles));
+            
+            alert("Puzzle Saved!");
+            loadSavedPuzzles();
+        }
+
+        function loadSavedPuzzles() {
+            let puzzles = JSON.parse(localStorage.getItem('chessPuzzles') || '[]');
+            let html = '';
+            puzzles.forEach((p, i) => {
+                html += `<div style="background:white;padding:10px;margin:5px;border-radius:8px;">
+                    <strong>${p.title}</strong> (${p.date})<br>
+                    <small>${p.goal}</small><br>
+                    <button onclick="loadPuzzle(${i})">Load</button>
+                    <button onclick="deletePuzzle(${i})">Delete</button>
+                </div>`;
+            });
+            document.getElementById('savedPuzzles').innerHTML = html || '<p>No saved puzzles yet.</p>';
+        }
+
+        function loadPuzzle(index) {
+            let puzzles = JSON.parse(localStorage.getItem('chessPuzzles') || '[]');
+            const p = puzzles[index];
+            game.load(p.fen);
+            board.position(p.fen);
+            document.getElementById('puzzleTitle').value = p.title;
+            document.getElementById('puzzleGoal').value = p.goal;
+            document.getElementById('solution').value = p.solution;
+            updateStatus();
+        }
+
+        function deletePuzzle(index) {
+            let puzzles = JSON.parse(localStorage.getItem('chessPuzzles') || '[]');
+            puzzles.splice(index, 1);
+            localStorage.setItem('chessPuzzles', JSON.stringify(puzzles));
+            loadSavedPuzzles();
+        }
+    </script>
+</body>
+</html>
